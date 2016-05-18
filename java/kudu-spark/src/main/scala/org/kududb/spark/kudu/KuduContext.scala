@@ -24,6 +24,8 @@ import org.apache.spark.sql.Row
 import org.kududb.annotations.InterfaceStability
 import org.kududb.client.{AsyncKuduClient, KuduClient}
 
+import scala.collection.mutable
+
 /**
   * KuduContext is a serializable container for Kudu client connections.
   *
@@ -44,7 +46,7 @@ class KuduContext(kuduMaster: String) extends Serializable {
   private val ShutdownHookPriority = 100
 
   @transient lazy val syncClient = {
-    val syncClient = new KuduClient.KuduClientBuilder(kuduMaster).build()
+    val syncClient = KuduConnection.getSyncClient(kuduMaster)
     ShutdownHookManager.get().addShutdownHook(new Runnable {
       override def run() = syncClient.close()
     }, ShutdownHookPriority)
@@ -52,7 +54,7 @@ class KuduContext(kuduMaster: String) extends Serializable {
   }
 
   @transient lazy val asyncClient = {
-    val asyncClient = new AsyncKuduClient.AsyncKuduClientBuilder(kuduMaster).build()
+    val asyncClient = KuduConnection.getAsyncClient(kuduMaster)
     ShutdownHookManager.get().addShutdownHook(
       new Runnable {
         override def run() = asyncClient.close()
@@ -74,5 +76,29 @@ class KuduContext(kuduMaster: String) extends Serializable {
               columnProjection: Seq[String] = Nil): RDD[Row] = {
     new KuduRDD(kuduMaster, 1024*1024*20, columnProjection.toArray, Array(),
                 syncClient.openTable(tableName), this, sc)
+  }
+
+}
+
+private object KuduConnection {
+  val syncCache = new mutable.HashMap[String, KuduClient]()
+  val asyncCache = new mutable.HashMap[String, AsyncKuduClient]()
+
+  def getSyncClient(kuduMaster: String): KuduClient = {
+    syncCache.synchronized {
+      if(!syncCache.contains(kuduMaster)) {
+        syncCache.put(kuduMaster, new KuduClient.KuduClientBuilder(kuduMaster).build())
+      }
+      return syncCache(kuduMaster)
+    }
+  }
+
+  def getAsyncClient(kuduMaster: String): AsyncKuduClient = {
+    asyncCache.synchronized {
+      if(!asyncCache.contains(kuduMaster)) {
+        asyncCache.put(kuduMaster, new AsyncKuduClient.AsyncKuduClientBuilder(kuduMaster).build())
+      }
+      return asyncCache(kuduMaster)
+    }
   }
 }
