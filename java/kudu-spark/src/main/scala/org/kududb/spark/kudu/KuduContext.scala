@@ -43,11 +43,9 @@ class KuduContext(kuduMaster: String) extends Serializable {
   private val ShutdownHookPriority = 100
 
   @transient lazy val syncClient = {
-    println("------------------ Create syncClient")
     val syncClient = ConnectionCache.getSyncClient(kuduMaster)
     ShutdownHookManager.get().addShutdownHook(new Runnable {
       override def run() = {
-        println("------------------ Destroy syncClient")
         syncClient.close()
       }
     }, ShutdownHookPriority)
@@ -55,12 +53,10 @@ class KuduContext(kuduMaster: String) extends Serializable {
   }
 
   @transient lazy val asyncClient = {
-    println("------------------ Create asyncClient")
     val asyncClient = ConnectionCache.getAsyncClient(kuduMaster)
     ShutdownHookManager.get().addShutdownHook(
       new Runnable {
         override def run() = {
-          println("------------------ Destroy asyncClient")
           asyncClient.close()
         }
       }, ShutdownHookPriority)
