@@ -22,7 +22,6 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Row
 import org.kududb.annotations.InterfaceStability
-import org.kududb.client.{AsyncKuduClient, KuduClient}
 
 /**
   * KuduContext is a serializable container for Kudu client connections.
@@ -44,18 +43,26 @@ class KuduContext(kuduMaster: String) extends Serializable {
   private val ShutdownHookPriority = 100
 
   @transient lazy val syncClient = {
-    val syncClient = new KuduClient.KuduClientBuilder(kuduMaster).build()
+    println("------------------ Create syncClient")
+    val syncClient = ConnectionCache.getSyncClient(kuduMaster)
     ShutdownHookManager.get().addShutdownHook(new Runnable {
-      override def run() = syncClient.close()
+      override def run() = {
+        println("------------------ Destroy syncClient")
+        syncClient.close()
+      }
     }, ShutdownHookPriority)
     syncClient
   }
 
   @transient lazy val asyncClient = {
-    val asyncClient = new AsyncKuduClient.AsyncKuduClientBuilder(kuduMaster).build()
+    println("------------------ Create asyncClient")
+    val asyncClient = ConnectionCache.getAsyncClient(kuduMaster)
     ShutdownHookManager.get().addShutdownHook(
       new Runnable {
-        override def run() = asyncClient.close()
+        override def run() = {
+          println("------------------ Destroy asyncClient")
+          asyncClient.close()
+        }
       }, ShutdownHookPriority)
     asyncClient
   }
@@ -63,16 +70,16 @@ class KuduContext(kuduMaster: String) extends Serializable {
   /**
     * Create an RDD from a Kudu table.
     *
-    * @param tableName          table to read from
-    * @param columnProjection   list of columns to read. Not specifying this at all
-    *                           (i.e. setting to null) or setting to the special
-    *                           string '*' means to project all columns.
+    * @param tableName        table to read from
+    * @param columnProjection list of columns to read. Not specifying this at all
+    *                         (i.e. setting to null) or setting to the special
+    *                         string '*' means to project all columns.
     * @return a new RDD that maps over the given table for the selected columns
     */
   def kuduRDD(sc: SparkContext,
               tableName: String,
               columnProjection: Seq[String] = Nil): RDD[Row] = {
-    new KuduRDD(kuduMaster, 1024*1024*20, columnProjection.toArray, Array(),
-                syncClient.openTable(tableName), this, sc)
+    new KuduRDD(kuduMaster, 1024 * 1024 * 20, columnProjection.toArray, Array(),
+      syncClient.openTable(tableName), this, sc)
   }
 }
